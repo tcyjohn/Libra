@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 
 from RL_Framework.config import AsyncRLConfig
@@ -55,9 +57,10 @@ async def test_r2e_rollout_index_produces_distinct_reproducible_sampling_seeds()
 
 def test_r2e_stop_reward_loads_from_production_config(monkeypatch):
     monkeypatch.setattr('RL_Framework.config.os.makedirs', lambda *args, **kwargs: None)
-    config = AsyncRLConfig.from_yaml(
-        "configs/r2e_gym_qwen3_14b_mcore_gpu_6node48_production_ehp.yaml"
+    config_path = Path(__file__).resolve().parents[1] / "configs" / (
+        "r2e_gym_qwen3_14b_mcore_gpu_6node48_production_ehp.yaml"
     )
+    config = AsyncRLConfig.from_yaml(str(config_path))
 
     assert config.r2e_stop_reward == pytest.approx(0.5)
 

@@ -118,11 +118,12 @@ def test_one_rank_failure_reaches_dispatch_and_follower(tmp_path):
 
 
 def test_repartition_weights_publish_before_binding_new_endpoint():
+    from RL_Framework.config import HeterogeneousInstanceConfig, HeterogeneousRolloutConfig
     from RL_Framework.infra.sync.publication_session import publication_inventory
     from RL_Framework.trainer.async_rl_trainer import AsyncRLTrainer
     trainer = object.__new__(AsyncRLTrainer)
-    trainer.config = SimpleNamespace(heterogeneous_rollout=SimpleNamespace(instances=[
-        SimpleNamespace(instance_id='old', host='node', port=8001, tp=1),
+    trainer.config = SimpleNamespace(heterogeneous_rollout=HeterogeneousRolloutConfig(instances=[
+        HeterogeneousInstanceConfig(instance_id='old', host='node', port=8001, tp=1),
     ]))
     trainer.rollout_engine = SimpleNamespace(instance_urls=['http://node:8001'])
     trainer.runtime_elastic_executor = SimpleNamespace(_lent_rollout=None)
