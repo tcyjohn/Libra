@@ -53,7 +53,8 @@ async def test_r2e_rollout_index_produces_distinct_reproducible_sampling_seeds()
     assert first == repeated
 
 
-def test_r2e_stop_reward_loads_from_production_config():
+def test_r2e_stop_reward_loads_from_production_config(monkeypatch):
+    monkeypatch.setattr('RL_Framework.config.os.makedirs', lambda *args, **kwargs: None)
     config = AsyncRLConfig.from_yaml(
         "configs/r2e_gym_qwen3_14b_mcore_gpu_6node48_production_ehp.yaml"
     )
