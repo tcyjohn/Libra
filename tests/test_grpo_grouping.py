@@ -405,3 +405,36 @@ def test_destroy_stops_production_and_releases_inflight_tasks_before_service_shu
     assert not dispatcher.runner.thread.is_alive()
     assert sorted(released) == sorted(started)
     assert len(started) == 8
+
+
+@pytest.mark.parametrize(
+    ("revision", "error"),
+    [(2, "below the group's publication promise"), (None, "actual integer sample_revision")],
+    ids=["below-promise", "missing-revision"],
+)
+def test_trainer_checks_actual_sampling_revision_against_publication_promise(revision, error):
+    trainer = _trainer(n_samples=1)
+    trainer.config.grpo_objective = "decoupled"
+    trainer._bounded_rollout_production = True
+    trainer.train_engine.optimizer_revision = 3
+    trainer.is_main_process = True
+    trainer.rollout_engine = object()
+
+    async def episode(engine, data, *, version, rollout_index):
+        row = {"versions": torch.tensor([version]), "rewards": torch.tensor([0.0])}
+        if revision is not None:
+            row["sample_revision"] = revision
+        return row
+
+    trainer.workflow = SimpleNamespace(run_episode=episode)
+    manager = trainer.staleness_manager = StalenessManager(trainer.train_engine, 2, 1, 1)
+    runner = AsyncTaskRunner(max_queue_size=4)
+    dispatcher = trainer.dispatcher = BatchTaskDispatcher(runner, manager, trainer._create_rollout_task)
+    generator = trainer._create_data_generator([{"x": 1}], trainer.workflow)
+    runner.initialize()
+    dispatcher.initialize()
+    try:
+        with pytest.raises(RuntimeError, match=error):
+            trainer._collect_complete_grpo_batch(generator, 1)
+    finally:
+        dispatcher.destroy()

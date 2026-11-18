@@ -187,6 +187,52 @@ def test_return_readiness_retry_keeps_started_process_ownership(tmp_path):
     assert events.count(('start','a'))==1
 
 
+def test_return_restarts_a_dead_restoration_only_after_confirming_exit(tmp_path):
+    ex, events, _ = fixture(count=2, reserve=0)
+    lend_rollout(ex, 1)
+    ex._hybrid_worker_control_dir = lambda: tmp_path
+    ex._processes = {}
+    start = ex._start_one_rollout_process
+    launched = []
+
+    def tracked_start(meta):
+        owner = start(meta)
+        process = NS(returncode=None)
+        process.poll = lambda: process.returncode
+        ex._processes[owner.instance_id] = process
+        launched.append(owner)
+        return owner
+
+    ex._start_one_rollout_process = tracked_start
+
+    def wait(meta):
+        if len(launched) == 1:
+            ex._processes[meta.instance_id].returncode = 1
+            raise RuntimeError('new rollout exited')
+
+    ex._wait_rollout_process_start_ready = wait
+    with pytest.raises(RuntimeError, match='new rollout exited'):
+        return_rollout(ex)
+
+    assert ex._process_meta['a'] is launched[0]
+    stop = ex._stop_rollout_process
+    ex._stop_rollout_process = lambda _: []
+    with pytest.raises(RuntimeError, match='cannot confirm exit'):
+        return_rollout(ex)
+    assert ex._process_meta['a'] is launched[0]
+    assert len(launched) == 1
+
+    ex._stop_rollout_process = stop
+    restored = return_rollout(ex)
+    assert len(launched) == 2
+    assert restored == [launched[1]]
+    assert events.count(('start', 'a')) == 2
+    assert [event for event in events if isinstance(event, tuple)] == [
+        ('stop', 'a'), ('start', 'a'), ('stop', 'a'), ('start', 'a'),
+    ]
+    assert launched[0].incarnation_id != launched[1].incarnation_id
+
+
 def test_wide_replica_hands_off_only_after_every_engine_exit_ack():
     ex,events,_=fixture(count=4,reserve=0)
     ex.config.train_tp_size=2
