@@ -318,3 +318,40 @@ def test_decoupled_feedback_overrun_preserves_sampled_prefix(monkeypatch):
     assert row['input_ids'].tolist() == [[10, 11, 301]]
     assert len(engine.calls) == 1 and not row['tool_returns']
     assert engine.events[-1] == ('finish', 'trajectory', 1)
+
+
+@pytest.mark.parametrize('sample_revision', [4, 1, None])
+def test_trainer_admits_only_fresh_rollouts_with_an_actual_revision(sample_revision):
+    from types import SimpleNamespace
+    from RL_Framework.infra.execution.async_runner import AsyncTaskRunner
+    from RL_Framework.infra.execution.batch_dispatcher import BatchTaskDispatcher, TaskInput
+    from RL_Framework.infra.sync.staleness import StalenessManager
+    from RL_Framework.trainer.async_rl_trainer import AsyncRLTrainer
+
+    async def run_episode(*args, **kwargs):
+        return {'sample_revision': sample_revision}
+
+    trainer = AsyncRLTrainer.__new__(AsyncRLTrainer)
+    trainer.config = SimpleNamespace(grpo_objective='decoupled', max_head_offpolicyness=1)
+    trainer.workflow = SimpleNamespace(run_episode=run_episode)
+    trainer.train_engine = SimpleNamespace(optimizer_revision=5, get_version=lambda: 5)
+    trainer.rollout_engine = object()
+    trainer.is_main_process = False
+    trainer.staleness_manager = StalenessManager(
+        version_provider=trainer.train_engine, max_concurrent_rollouts=1, consumer_batch_size=1, max_staleness=1,
+    )
+    trainer.dispatcher = BatchTaskDispatcher(
+        AsyncTaskRunner(max_queue_size=4), trainer.staleness_manager, trainer._create_rollout_task,
+    )
+    trainer.staleness_manager.on_rollout_enqueued()
+    trainer.staleness_manager.on_rollout_submitted()
+    task = trainer._create_rollout_task(TaskInput(0, {}, version=5))
+
+    if sample_revision is None:
+        with pytest.raises(SamplingEvidenceError, match='actual sampling revision'):
+            asyncio.run(task())
+        with pytest.raises(RuntimeError, match='actual sampling revision'):
+            trainer.dispatcher.wait_results(count=1, timeout=.1)
+    else:
+        result = asyncio.run(task())
+        assert (result is not None) == (sample_revision == 4)

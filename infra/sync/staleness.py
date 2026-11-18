@@ -177,6 +177,8 @@ class StalenessManager:
                 return
             if sample_revision < group.promised_revision:
                 raise ValueError("sample revision is below the group's publication promise")
+            if sample_revision > self.optimizer_revision:
+                raise ValueError("sample revision is ahead of the current optimizer revision")
             group.members[task_id] = "ready"
             group.sample_revision = (sample_revision if group.sample_revision is None
                                      else min(group.sample_revision, sample_revision))

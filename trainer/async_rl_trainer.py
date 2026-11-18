@@ -469,9 +469,16 @@ class AsyncRLTrainer:
                 trajectory["grpo_rollout_index"] = task_input.rollout_index
 
                 if not bounded:
-                    versions = trajectory.get("versions")
-                    version = int(versions.min().item()) if versions is not None else task_input.version
-                    age = self.train_engine.get_version() - version
+                    if exact_sampling:
+                        current_revision = self.train_engine.optimizer_revision
+                        sample_revision = trajectory.get("sample_revision")
+                        if type(sample_revision) is not int or not 0 <= sample_revision <= current_revision:
+                            raise SamplingEvidenceError("Invalid actual sampling revision")
+                    else:
+                        current_revision = self.train_engine.get_version()
+                        versions = trajectory.get("versions")
+                        sample_revision = versions.min().item() if versions is not None else task_input.version
+                    age = current_revision - sample_revision
                     if age > self.config.max_head_offpolicyness:
                         return None
                 return trajectory

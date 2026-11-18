@@ -409,8 +409,9 @@ def test_destroy_stops_production_and_releases_inflight_tasks_before_service_shu
 
 @pytest.mark.parametrize(
     ("revision", "error"),
-    [(2, "below the group's publication promise"), (None, "actual integer sample_revision")],
-    ids=["below-promise", "missing-revision"],
+    [(2, "below the group's publication promise"), (None, "actual integer sample_revision"),
+     (4, "ahead of the current optimizer revision")],
+    ids=["below-promise", "missing-revision", "ahead-of-optimizer"],
 )
 def test_trainer_checks_actual_sampling_revision_against_publication_promise(revision, error):
     trainer = _trainer(n_samples=1)
